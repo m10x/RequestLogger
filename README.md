@@ -15,7 +15,9 @@ A simple HTTP(S) server that logs all incoming requests.
   - Request body
   - Query parameters
 - Logging to both console and file
-- Automatic TLS certificate management using certmagic
+- Smart TLS certificate management:
+  - Automatic self-signed certificates for localhost/IP
+  - Let's Encrypt integration for real domains
 - Development-friendly HTTPS setup by default
 
 ## Installation
@@ -63,7 +65,7 @@ go run main.go
 ```
 
 By default:
-- Uses HTTPS protocol
+- Uses HTTPS protocol with self-signed certificate
 - Runs on port 8443
 - Listens on all interfaces (0.0.0.0)
 - Uses automatic certificate management
@@ -78,7 +80,7 @@ The server supports the following command line parameters:
 - `-log`: Path to the log file (default: "logs/requests.log")
 - `-cert`: Path to TLS certificate file for HTTPS (optional)
 - `-key`: Path to TLS private key file for HTTPS (optional)
-- `-domain`: Additional domain name for the certificate (optional)
+- `-domain`: Domain name for Let's Encrypt certificate (optional)
 
 Examples:
 
@@ -89,7 +91,7 @@ go run main.go -protocol http -port 8080
 # Run as HTTPS server on standard ports
 go run main.go -port 443
 
-# Run on a specific IP address
+# Run on a specific IP address (will include IP in certificate)
 go run main.go -ip 192.168.1.100
 
 # Run on localhost only
@@ -98,7 +100,7 @@ go run main.go -ip 127.0.0.1
 # Specify a custom log file
 go run main.go -log /var/log/requests.log
 
-# Run with additional domain name
+# Run with a real domain (will use Let's Encrypt)
 go run main.go -domain example.com
 
 # Run with existing certificates
@@ -110,19 +112,24 @@ go run main.go -ip 192.168.1.100 -port 443 -domain example.com
 
 ### TLS/HTTPS Support
 
-The server handles TLS in two ways:
+The server handles TLS in three ways:
 
-1. **Automatic Certificate Management (Default)**
-   - Uses certmagic to automatically manage certificates
-   - Always uses Let's Encrypt's staging environment for development-friendly setup
-   - Certificate is valid for:
-     - localhost
-     - Server IP (if specified)
-     - Additional domain (if specified)
+1. **Automatic Self-Signed Certificates (Default for localhost/IP)**
+   - Automatically generates self-signed certificates
+   - Valid for localhost and specified IP addresses
+   - Perfect for development and testing
+   - No configuration needed
+   - Valid for 1 year
+   - Note: Browsers will show a security warning (normal for self-signed certificates)
+
+2. **Let's Encrypt Integration (For real domains)**
+   - Automatically obtains certificates from Let's Encrypt
+   - Uses staging environment by default
+   - Requires a valid domain name
    - Certificates are stored in the `certificates` directory
    - Handles automatic renewal
 
-2. **Custom Certificates**
+3. **Custom Certificates**
    - Use your own certificates by providing the paths:
    ```bash
    go run main.go -cert /path/to/cert.pem -key /path/to/key.pem
@@ -149,15 +156,3 @@ Each request is logged in the following JSON format:
   }
 }
 ```
-
-## Production Use
-
-When using this server in production:
-
-1. Make sure your domain points to the server's IP address
-2. Consider using your own certificates instead of the staging environment
-3. Ensure port 80 and 443 are accessible (required for Let's Encrypt verification)
-4. Consider binding to specific IP addresses for better security
-5. Always use HTTPS in production unless there's a specific requirement for HTTP
-
-**Note**: By default, the server uses Let's Encrypt's staging environment, which means browsers will show a security warning. This is intentional for development purposes. For production use, you should provide your own certificates.

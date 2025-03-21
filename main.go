@@ -2,11 +2,18 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -16,7 +23,7 @@ import (
 )
 
 const (
-	version = "1.0.0"
+	version = "1.0.1"
 	banner  = `
  ____                           _   _                            
 |  _ \ ___  __ _ _   _  ___  ___| |_| |    ___   __ _  __ _  ___ _ __ 
@@ -120,6 +127,59 @@ func defaultHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Request logged successfully")
 }
 
+// generateSelfSignedCert creates a self-signed certificate for development
+func generateSelfSignedCert(hosts []string) (*tls.Certificate, error) {
+	// Generate private key
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate private key: %v", err)
+	}
+
+	// Prepare certificate template
+	notBefore := time.Now()
+	notAfter := notBefore.Add(365 * 24 * time.Hour) // Valid for 1 year
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate serial number: %v", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"RequestLogger Development"},
+			CommonName:   hosts[0],
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	// Add all hosts as SANs
+	for _, host := range hosts {
+		if ip := net.ParseIP(host); ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, host)
+		}
+	}
+
+	// Create certificate
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %v", err)
+	}
+
+	cert := &tls.Certificate{
+		Certificate: [][]byte{derBytes},
+		PrivateKey:  privateKey,
+	}
+
+	return cert, nil
+}
+
 func main() {
 	// Print banner
 	printBanner()
@@ -173,38 +233,52 @@ func main() {
 		}
 	} else {
 		// Use certmagic for automatic certificate management
-		log.Printf("Starting HTTPS server with automatic certificate management on %s", addr)
+		log.Printf("Starting HTTPS server with certificate management on %s", addr)
 
-		// Configure certmagic
-		certmagic.Default.Storage = &certmagic.FileStorage{Path: "certificates"}
-
-		// Always use staging CA unless explicitly set to production
-		certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
-
-		// Create list of domains to be included in the certificate
-		domains := []string{"localhost"}
-
-		// Add IP if it's not 0.0.0.0
-		if config.IP != "0.0.0.0" {
-			domains = append(domains, config.IP)
-		}
-
-		// Add custom domain if specified and different from localhost
-		if config.Domain != "localhost" {
+		// Create list of domains
+		var domains []string
+		if config.Domain != "localhost" && config.Domain != "" {
 			domains = append(domains, config.Domain)
 		}
 
-		// Create certificate manager
-		tlsConfig, err := certmagic.TLS(domains)
-		if err != nil {
-			log.Fatalf("Failed to create certificate manager: %v", err)
+		var server *http.Server
+		if len(domains) > 0 {
+			// Use Let's Encrypt for real domains
+			certmagic.Default.Storage = &certmagic.FileStorage{Path: "certificates"}
+			certmagic.DefaultACME.CA = certmagic.LetsEncryptStagingCA
+
+			tlsConfig, err := certmagic.TLS(domains)
+			if err != nil {
+				log.Fatalf("Failed to create certificate manager: %v", err)
+			}
+
+			server = &http.Server{
+				Addr:      addr,
+				Handler:   nil,
+				TLSConfig: tlsConfig,
+			}
+		} else {
+			// Use self-signed certificate for localhost/IP
+			hosts := []string{"localhost"}
+			if config.IP != "0.0.0.0" {
+				hosts = append(hosts, config.IP)
+			}
+
+			cert, err := generateSelfSignedCert(hosts)
+			if err != nil {
+				log.Fatalf("Failed to generate self-signed certificate: %v", err)
+			}
+
+			server = &http.Server{
+				Addr:    addr,
+				Handler: nil,
+				TLSConfig: &tls.Config{
+					Certificates: []tls.Certificate{*cert},
+				},
+			}
+			log.Printf("Using self-signed certificate for %v", hosts)
 		}
 
-		server := &http.Server{
-			Addr:      addr,
-			Handler:   nil, // Use default handler
-			TLSConfig: tlsConfig,
-		}
 		if err := server.ListenAndServeTLS("", ""); err != nil {
 			log.Fatalf("HTTPS server failed: %v", err)
 		}
