@@ -1,6 +1,6 @@
 # HTTP Request Logger
 
-A simple HTTP server that logs all incoming requests.
+A simple HTTP(S) server that logs all incoming requests.
 
 ## Features
 

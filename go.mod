@@ -1,4 +1,4 @@
-module github.com/yourusername/requestlogger
+module github.com/m10x/requestlogger
 
 go 1.23.0
 
