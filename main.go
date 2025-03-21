@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	version = "1.0.2"
+	version = "1.0.3"
 	banner  = `
  ____                           _   _                            
 |  _ \ ___  __ _ _   _  ___  ___| |_| |    ___   __ _  __ _  ___ _ __ 
@@ -69,8 +69,8 @@ func printRequest(reqLog *RequestLog) {
 	fmt.Println(divider)
 
 	// Timestamp and basic info
-	color.Blue("📅 Zeitstempel: %s", reqLog.Timestamp)
-	color.Green("🌐 %s %s", reqLog.Method, reqLog.Path)
+	color.Blue("📅 Timestamp: %s", reqLog.Timestamp)
+	color.Green("🌐 %s %s", reqLog.Method, reqLog.URL)
 	color.Yellow("🌍 Client IP: %s", reqLog.RemoteAddr)
 
 	// Headers
@@ -84,7 +84,7 @@ func printRequest(reqLog *RequestLog) {
 	// Body
 	color.Magenta("\n📦 Body:")
 	if reqLog.Body == "" {
-		fmt.Println("    Leer")
+		fmt.Println("    Empty")
 	} else {
 		fmt.Printf("    %s\n", reqLog.Body)
 	}
@@ -98,6 +98,7 @@ type RequestLog struct {
 	Timestamp   string              `json:"timestamp"`
 	Method      string              `json:"method"`
 	Path        string              `json:"path"`
+	URL         string              `json:"url"`
 	RemoteAddr  string              `json:"remote_addr"`
 	Headers     map[string][]string `json:"headers"`
 	Body        string              `json:"body"`
@@ -137,45 +138,49 @@ func setupLogging(logFile string) (*os.File, error) {
 }
 
 // logHandler wraps the request handling with logging functionality
-func logHandler(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Read the request body
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Printf("Error reading body: %v", err)
-			http.Error(w, "Error reading request body", http.StatusInternalServerError)
-			return
-		}
-		// Restore the body for further processing if needed
-		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-		// Create request log entry
-		reqLog := RequestLog{
-			Timestamp:   time.Now().Format(time.RFC3339),
-			Method:      r.Method,
-			Path:        r.URL.Path,
-			RemoteAddr:  r.RemoteAddr,
-			Headers:     r.Header,
-			Body:        string(bodyBytes),
-			QueryParams: r.URL.Query(),
-		}
-
-		// Print formatted request to console
-		printRequest(&reqLog)
-
-		// Log JSON format to file
-		logJSON, err := json.MarshalIndent(reqLog, "", "  ")
-		if err != nil {
-			log.Printf("Error marshaling request log: %v", err)
-		} else {
-			// Only write JSON to file, not to console
-			if f, ok := log.Writer().(*os.File); ok {
-				fmt.Fprintf(f, "%s\n", string(logJSON))
+func logHandler(logFile string) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			// Read the request body
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				log.Printf("Error reading body: %v", err)
+				http.Error(w, "Error reading request body", http.StatusInternalServerError)
+				return
 			}
-		}
+			// Restore the body for further processing if needed
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-		// Call the next handler
-		next(w, r)
+			// Create request log entry
+			reqLog := RequestLog{
+				Timestamp:   time.Now().Format(time.RFC3339),
+				Method:      r.Method,
+				Path:        r.URL.Path,
+				URL:         r.URL.String(),
+				RemoteAddr:  r.RemoteAddr,
+				Headers:     r.Header,
+				Body:        string(bodyBytes),
+				QueryParams: r.URL.Query(),
+			}
+
+			// Print formatted request to console
+			printRequest(&reqLog)
+
+			// Log JSON format to file
+			logJSON, err := json.MarshalIndent(reqLog, "", "  ")
+			if err != nil {
+				log.Printf("Error marshaling request log: %v", err)
+			} else {
+				// Write JSON to log file
+				if f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+					fmt.Fprintf(f, "%s\n", string(logJSON))
+					f.Close()
+				}
+			}
+
+			// Call the next handler
+			next(w, r)
+		}
 	}
 }
 
@@ -267,7 +272,7 @@ func main() {
 	defer logFile.Close()
 
 	// Setup routes
-	http.HandleFunc("/", logHandler(defaultHandler))
+	http.HandleFunc("/", logHandler(config.LogFile)(defaultHandler))
 
 	// Configure server
 	addr := fmt.Sprintf("%s:%s", config.IP, config.Port)
