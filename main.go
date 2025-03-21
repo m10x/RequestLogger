@@ -15,6 +15,25 @@ import (
 	"github.com/caddyserver/certmagic"
 )
 
+const (
+	version = "1.0.0"
+	banner  = `
+ ____                           _   _                            
+|  _ \ ___  __ _ _   _  ___  ___| |_| |    ___   __ _  __ _  ___ _ __ 
+| |_) / _ \/ _' | | | |/ _ \/ __| __| |   / _ \ / _' |/ _' |/ _ \ '__|
+|  _ <  __/ (_| | |_| |  __/\__ \ |_| |__| (_) | (_| | (_| |  __/ |   
+|_| \_\___|\__, |\__,_|\___||___/\__|_____\___/ \__, |\__, |\___|_|   
+           |___/                                 |___/ |___/           
+Version: %s
+`
+)
+
+// printBanner prints the ASCII art banner with version
+func printBanner() {
+	fmt.Printf(banner, version)
+	fmt.Println()
+}
+
 // RequestLog represents the structure for logging HTTP request information
 type RequestLog struct {
 	Timestamp   string              `json:"timestamp"`
@@ -102,6 +121,9 @@ func defaultHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Print banner
+	printBanner()
+
 	// Parse command line flags
 	config := Config{}
 	flag.StringVar(&config.IP, "ip", "0.0.0.0", "IP address to listen on (0.0.0.0 for all interfaces)")
