@@ -51,35 +51,55 @@ func formatHeaders(headers map[string][]string) string {
 	return result.String()
 }
 
-// formatQueryParams formats the query parameters in a human-readable way
-func formatQueryParams(params map[string][]string) string {
-	if len(params) == 0 {
-		return "    None"
-	}
-	var result strings.Builder
-	for key, values := range params {
-		result.WriteString(fmt.Sprintf("    %s: %s\n", key, strings.Join(values, ", ")))
-	}
-	return result.String()
-}
-
 // printRequest prints the request in a human-readable format with colors
 func printRequest(reqLog *RequestLog) {
 	divider := color.HiBlackString("----------------------------------------")
 	fmt.Println(divider)
 
 	// Timestamp and basic info
-	color.Blue("📅 Timestamp: %s", reqLog.Timestamp)
-	color.Green("🌐 %s %s", reqLog.Method, reqLog.URL)
+	color.Blue("📅 Zeitstempel: %s", reqLog.Timestamp)
+
+	// Method and URL components
+	method := color.GreenString(reqLog.Method)
+	path := color.HiGreenString(reqLog.Path)
+
+	// Format query string if present
+	queryStr := ""
+	if len(reqLog.QueryParams) > 0 {
+		pairs := make([]string, 0)
+		for key, values := range reqLog.QueryParams {
+			for _, value := range values {
+				pairs = append(pairs, fmt.Sprintf("%s=%s",
+					color.HiYellowString(key),
+					color.HiWhiteString(value)))
+			}
+		}
+		queryStr = color.HiBlackString("?") + strings.Join(pairs, color.HiBlackString("&"))
+	}
+
+	// Full URL with colors
+	fmt.Printf("🌐 %s %s%s\n", method, path, queryStr)
 	color.Yellow("🌍 Client IP: %s", reqLog.RemoteAddr)
+
+	// Path details
+	color.Magenta("\n🛣️  Pfad:")
+	fmt.Printf("    %s\n", color.HiGreenString(reqLog.Path))
+
+	// Query Parameters
+	color.Magenta("\n🔍 Query Parameter:")
+	if len(reqLog.QueryParams) == 0 {
+		fmt.Println("    Keine")
+	} else {
+		for key, values := range reqLog.QueryParams {
+			fmt.Printf("    %s: %s\n",
+				color.HiYellowString(key),
+				color.HiWhiteString(strings.Join(values, ", ")))
+		}
+	}
 
 	// Headers
 	color.Magenta("\n📋 Headers:")
 	fmt.Print(formatHeaders(reqLog.Headers))
-
-	// Query Parameters
-	color.Magenta("\n🔍 Query Parameter:")
-	fmt.Print(formatQueryParams(reqLog.QueryParams))
 
 	// Body
 	color.Magenta("\n📦 Body:")
@@ -166,15 +186,18 @@ func logHandler(logFile string) func(http.HandlerFunc) http.HandlerFunc {
 			// Print formatted request to console
 			printRequest(&reqLog)
 
+			// Create JSON encoder that doesn't escape HTML characters
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetEscapeHTML(false)
+
 			// Log JSON format to file
-			logJSON, err := json.MarshalIndent(reqLog, "", "  ")
-			if err != nil {
-				log.Printf("Error marshaling request log: %v", err)
-			} else {
-				// Write JSON to log file
-				if f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-					fmt.Fprintf(f, "%s\n", string(logJSON))
-					f.Close()
+			if f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				defer f.Close()
+				encoder = json.NewEncoder(f)
+				encoder.SetEscapeHTML(false)
+				encoder.SetIndent("", "  ")
+				if err := encoder.Encode(reqLog); err != nil {
+					log.Printf("Error encoding request log: %v", err)
 				}
 			}
 
