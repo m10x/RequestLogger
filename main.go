@@ -20,10 +20,11 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/fatih/color"
 )
 
 const (
-	version = "1.0.1"
+	version = "1.0.2"
 	banner  = `
  ____                           _   _                            
 |  _ \ ___  __ _ _   _  ___  ___| |_| |    ___   __ _  __ _  ___ _ __ 
@@ -37,7 +38,58 @@ Version: %s
 
 // printBanner prints the ASCII art banner with version
 func printBanner() {
-	fmt.Printf(banner, version)
+	color.Cyan(banner, version)
+	fmt.Println()
+}
+
+// formatHeaders formats the headers in a human-readable way
+func formatHeaders(headers map[string][]string) string {
+	var result strings.Builder
+	for key, values := range headers {
+		result.WriteString(fmt.Sprintf("    %s: %s\n", key, strings.Join(values, ", ")))
+	}
+	return result.String()
+}
+
+// formatQueryParams formats the query parameters in a human-readable way
+func formatQueryParams(params map[string][]string) string {
+	if len(params) == 0 {
+		return "    None"
+	}
+	var result strings.Builder
+	for key, values := range params {
+		result.WriteString(fmt.Sprintf("    %s: %s\n", key, strings.Join(values, ", ")))
+	}
+	return result.String()
+}
+
+// printRequest prints the request in a human-readable format with colors
+func printRequest(reqLog *RequestLog) {
+	divider := color.HiBlackString("----------------------------------------")
+	fmt.Println(divider)
+
+	// Timestamp and basic info
+	color.Blue("📅 Zeitstempel: %s", reqLog.Timestamp)
+	color.Green("🌐 %s %s", reqLog.Method, reqLog.Path)
+	color.Yellow("🌍 Client IP: %s", reqLog.RemoteAddr)
+
+	// Headers
+	color.Magenta("\n📋 Headers:")
+	fmt.Print(formatHeaders(reqLog.Headers))
+
+	// Query Parameters
+	color.Magenta("\n🔍 Query Parameter:")
+	fmt.Print(formatQueryParams(reqLog.QueryParams))
+
+	// Body
+	color.Magenta("\n📦 Body:")
+	if reqLog.Body == "" {
+		fmt.Println("    Leer")
+	} else {
+		fmt.Printf("    %s\n", reqLog.Body)
+	}
+
+	fmt.Println(divider)
 	fmt.Println()
 }
 
@@ -108,12 +160,18 @@ func logHandler(next http.HandlerFunc) http.HandlerFunc {
 			QueryParams: r.URL.Query(),
 		}
 
-		// Convert to JSON for logging
+		// Print formatted request to console
+		printRequest(&reqLog)
+
+		// Log JSON format to file
 		logJSON, err := json.MarshalIndent(reqLog, "", "  ")
 		if err != nil {
 			log.Printf("Error marshaling request log: %v", err)
 		} else {
-			log.Printf("Incoming Request:\n%s\n", string(logJSON))
+			// Only write JSON to file, not to console
+			if f, ok := log.Writer().(*os.File); ok {
+				fmt.Fprintf(f, "%s\n", string(logJSON))
+			}
 		}
 
 		// Call the next handler
