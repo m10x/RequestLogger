@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	version = "1.0.3"
+	version = "1.0.5"
 	banner  = `
  ____                           _   _                            
 |  _ \ ___  __ _ _   _  ___  ___| |_| |    ___   __ _  __ _  ___ _ __ 
@@ -46,7 +46,10 @@ func printBanner() {
 func formatHeaders(headers map[string][]string) string {
 	var result strings.Builder
 	for key, values := range headers {
-		result.WriteString(fmt.Sprintf("    %s: %s\n", key, strings.Join(values, ", ")))
+		result.WriteString(fmt.Sprintf("    %s%s%s\n",
+			color.HiYellowString(key),
+			color.HiBlackString(": "),
+			color.HiWhiteString(strings.Join(values, ", "))))
 	}
 	return result.String()
 }
@@ -69,8 +72,9 @@ func printRequest(reqLog *RequestLog) {
 		pairs := make([]string, 0)
 		for key, values := range reqLog.QueryParams {
 			for _, value := range values {
-				pairs = append(pairs, fmt.Sprintf("%s=%s",
+				pairs = append(pairs, fmt.Sprintf("%s%s%s",
 					color.HiYellowString(key),
+					color.HiBlackString("="),
 					color.HiWhiteString(value)))
 			}
 		}
