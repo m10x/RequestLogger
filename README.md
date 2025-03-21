@@ -27,7 +27,7 @@ You can install the Request Logger in two ways:
 Install directly using Go:
 
 ```bash
-go install github.com/yourusername/requestlogger@latest
+go install github.com/m10x/requestlogger@latest
 ```
 
 After installation, you can run it from anywhere using:
