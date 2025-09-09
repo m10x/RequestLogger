@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	version = "1.0.5"
+	version = "1.0.6"
 	banner  = `
  ____                           _   _                            
 |  _ \ ___  __ _ _   _  ___  ___| |_| |    ___   __ _  __ _  ___ _ __ 
@@ -60,7 +60,7 @@ func printRequest(reqLog *RequestLog) {
 	fmt.Println(divider)
 
 	// Timestamp and basic info
-	color.Blue("📅 Zeitstempel: %s", reqLog.Timestamp)
+	color.Blue("📅 Timestamp: %s", reqLog.Timestamp)
 
 	// Method and URL components
 	method := color.GreenString(reqLog.Method)
